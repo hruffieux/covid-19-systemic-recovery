@@ -1,4 +1,4 @@
-## A patient-centric characterization of systemic recovery from SARS-CoV-2 infection - source code
+### A patient-centric characterization of systemic recovery from SARS-CoV-2 infection: source code
 
 This repository contains source code accompanying the preprint:
 
