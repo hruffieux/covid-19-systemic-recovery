@@ -732,4 +732,455 @@ add_grouped_factor <- function(df_comb, output_var, excluded_levels = NULL) {
   df_comb
 }
 
+get_mface_data <- function(df_comb, vec_var, min_nb_timepoints = 2) {
+  
+  list_subjects <- lapply(vec_var, function(vv) {
+    
+    df_sub <- df_comb[!is.na(df_comb[,vv]),, drop = FALSE]
+    tb <- table(df_sub$subject_id)
+    names(tb)[tb >= min_nb_timepoints] # subjects with enough timepoints
+    
+  })
+  
+  common_subjects <- Reduce(intersect, list_subjects)
+  
+  if (length(common_subjects)==0) {
+    stop("Stop. No subjects common to all variables.")
+  }
+  
+  data <- lapply(vec_var, function(vv) {
+    
+    df_var <- df_comb[!is.na(df_comb[,vv]),, drop = FALSE]
+    df_var <- df_var[df_var$subject_id %in% common_subjects,, drop = FALSE]
+    
+    vec_sub <- c("subject_id", "days_from_sx_or_swab_imputed", vv)
+    df_var <- subset(df_var, select = vec_sub)
+    rownames(df_var) <- NULL
+    names(df_var) <- c("subj", "argvals", "y")
+    df_var
+  })
+  names(data) <- paste0("y", 1:length(data))
+  
+  # check that all variables have measurements for each subject 
+  # (otherwise potential subject coding mismatch!)
+  stopifnot(length(unique(lapply(data, function(ll) sort(unique(ll$subj)))))==1)
+  
+  if (length(vec_var) == 1) {
+    data[[1]]
+  } else {
+    data
+  }
+  
+}
+
+get_mface_scores <- function(fit, list_data, tnew, df_comb, vec_col) {
+  
+  if (is.data.frame(list_data)) {
+    data <- list("y1" = list_data) # in case of univariate fpca
+  } else {
+    data <- list_data # in case of multivariate fpca
+  }
+  
+  # the same subjects for all metabolites, thanks to the stopifnot check above
+  vec_subj <- unique(data[[1]]$subj)
+  
+  scores <- NULL
+  for(i in vec_subj){
+    
+    sel <- lapply(data, function(x){which(x$subj==i)})
+    dat_i <- mapply(function(data, sel){data[sel,]}, 
+                    data = data, sel = sel, SIMPLIFY = FALSE)
+    dat_i_pred <- lapply(dat_i, function(x){
+      data.frame(subj=rep(x$subj[1],nrow(x) + length(tnew)),
+                 argvals = c(rep(NA,nrow(x)),tnew),
+                 y = rep(NA,nrow(x) + length(tnew)))
+    })
+    for(j in 1:length(dat_i)){
+      dat_i_pred[[j]][1:nrow(dat_i[[j]]), ] <- dat_i[[j]]
+    }
+    
+    if (is.data.frame(list_data)) {
+      dat_i_pred <- dat_i_pred[[1]]
+    }
+    pred <- predict(fit, dat_i_pred)
+    scores <- rbind(scores, pred$scores$scores)
+  }
+  colnames(scores) <- paste0("EF", 1:ncol(scores))
+  scores <- as.data.frame(scores)
+  scores$subject_id <- vec_subj
+  
+  df_sub_info <- subset(df_comb, select = c("subject_id", "severity", "hospital_outcome"))
+  rownames(df_sub_info) <- NULL
+  df_sub_info <- unique(df_sub_info)
+  df_sub_info$subject_id <- as.character(df_sub_info$subject_id)
+  scores <- dplyr::left_join(scores, df_sub_info)
+  
+  df_col <- data.frame("severity" = names(vec_col), "color_severity" = vec_col)
+  scores <- dplyr::left_join(scores, df_col)
+  rownames(scores) <- vec_subj
+  
+  scores
+}
+
+scatterplot_scores <- function(fit, scores, color, pcs = c(1, 2)) {
+  
+  par(mfrow=c(1,1),mar=c(4.5,5,3,2))
+  plot(scores[, paste0("EF", pcs[1])], 
+       scores[, paste0("EF", pcs[2])], 
+       col = color,
+       pch = 20, 
+       xlim = c(-max(abs(scores$EF1)), max(abs(scores[, paste0("EF", pcs[1])]))),
+       ylim = c(-max(abs(scores$EF2)), max(abs(scores[, paste0("EF", pcs[2])]))),
+       xlab = paste0("Scores FPC ", pcs[1], " (", 
+                     format(get_pve(fit, pcs[1]), digits = 3), "%)"),
+       ylab = paste0(" \n Scores FPC ", pcs[2], " (", 
+                     format(get_pve(fit, pcs[2]), digits = 3), "%)"),
+       main = "Scores"
+  )
+  points(scores[!is.na(scores$hospital_outcome) & scores$hospital_outcome == "dead", 
+                paste0("EF", pcs[1])], 
+         scores[!is.na(scores$hospital_outcome) & scores$hospital_outcome == "dead", 
+                paste0("EF", pcs[2])], 
+         pch = 13, col = adjustcolor("black", alpha.f = 0.4), cex = 1)
+  
+}
+
+get_subjects_to_show <- function(list_data, 
+                                 scores = NULL, 
+                                 nb_to_show = 4, 
+                                 show_extreme_subjects = FALSE, 
+                                 min_timepoints = 3) { 
+  
+  
+  if (is.data.frame(list_data)) {
+    data <- list("y1" = list_data) # in case of univariate fpca
+  } else {
+    data <- list_data # in case of multivariate fpca
+  }
+  
+  if (show_extreme_subjects) {
+    
+    stopifnot(!is.null(scores))
+    stopifnot((nb_to_show %% 2) == 0)
+    
+    subjects_to_show <- scores$subject_id[c(order(scores$EF2, decreasing = T)[1:(nb_to_show/2)],
+                                            order(scores$EF2)[1:(nb_to_show/2)])]
+    print("Extreme scores:")
+    print(scores$EF2[match(subjects_to_show,scores$subject_id)])
+  } else {
+    
+    subjects_to_show <- names(which(table(data[[1]]$subj)>=min_timepoints))
+    
+    if (!is.null(nb_to_show)) {
+      subjects_to_show <- subjects_to_show[1:nb_to_show]
+    }
+    
+    if (any(is.na(subjects_to_show))) {
+      stop(paste0("Not enough subjects with at least ", min_timepoints, 
+                  " samples. Reduce min_timepoints."))
+    }
+  }
+  
+  subjects_to_show
+}
+
+
+plot_subject_trajectories <- function(fit, scores, tnew, list_data, 
+                                      subjects_to_show, 
+                                      vec_var, df_comb, ylim_offset = 1,
+                                      var_disp_names = NULL,
+                                      bool_trunc = FALSE,
+                                      bool_par = TRUE,
+                                      main_plus = NULL,
+                                      sub = NULL,
+                                      ylab = NULL,
+                                      cex_main = 1.5,
+                                      cex_lab = 1,
+                                      col_curve = NULL,
+                                      col_ci = NULL,
+                                      bool_sub = TRUE
+) {
+  
+  if (is.data.frame(list_data)) {
+    data <- list("y1" = list_data) # in case of univariate fpca
+  } else {
+    data <- list_data # in case of multivariate fpca
+  }
+  
+  if (bool_trunc) {
+    df_comb$time <- df_comb$hospital_outcome_days_from_start_sx_or_first_pos_swab
+    df_comb$time[!(df_comb$hospital_outcome %in% "dead")] <- df_comb$last_observation_days_from_start_sx_or_first_pos_swab[!(df_comb$hospital_outcome %in% "dead")]
+    
+    df_comb$hospital_outcome[df_comb$severity %in% c("HC", "A", "B")] <- "alive"
+    
+    df_comb$status <- ifelse(df_comb$hospital_outcome == "dead", 2, 1) # 1 = cencored, 2 = dead
+  }
+  
+  if (bool_par) {
+    par(mar=c(5,4.5,5,7), mfrow = c(length(subjects_to_show), length(vec_var)))
+  }
+  
+  # for y-axis limits
+  sel_subj_to_show <- lapply(data, function(x){which(x$subj %in% subjects_to_show)})
+  # print(sel_subj_to_show)
+  dat_subj_to_show <- mapply(function(data, sel_subj_to_show){data[sel_subj_to_show,]}, 
+                             data = data, sel_subj_to_show = sel_subj_to_show, SIMPLIFY = FALSE)
+  
+  if (is.null(col_curve)) {
+    col_curve <- rep("red", length(subjects_to_show))
+  } else if (length(col_curve)==1) {
+    col_curve <- rep(col_curve, length(subjects_to_show))
+  }
+  names(col_curve) <- subjects_to_show
+  
+  if (is.null(col_ci)) {
+    col_ci <- "blue"
+  }
+  
+  for(i in subjects_to_show){
+    
+    sev <- unique(df_comb$severity[df_comb$subject_id %in% i])
+    sel <- lapply(data, function(x){which(x$subj==i)})
+    dat_i <- mapply(function(data, sel){data[sel,]}, 
+                    data = data, sel = sel, SIMPLIFY = FALSE)
+    dat_i_pred <- lapply(dat_i, function(x){
+      data.frame(subj=rep(x$subj[1],nrow(x) + length(tnew)),
+                 argvals = c(rep(NA,nrow(x)),tnew),
+                 y = rep(NA,nrow(x) + length(tnew)))
+    })
+    for(j in 1:length(dat_i)){
+      dat_i_pred[[j]][1:nrow(dat_i[[j]]), ] <- dat_i[[j]]
+    }
+    
+    if (is.data.frame(list_data)) {
+      dat_i_pred <- dat_i_pred[[1]]
+    }
+    
+    pred <- predict(fit, dat_i_pred)
+    y_pred <- mapply(function(pred_y.pred, dat_i){
+      pred_y.pred[nrow(dat_i)+1:length(tnew)]}, pred_y.pred = pred$y.pred, 
+      dat_i = dat_i, SIMPLIFY = TRUE)
+    
+    pre <- pred
+    
+    for (k in seq_along(data)) {
+      
+      vv <- vec_var[k]
+      
+      if (is.null(var_disp_names)) {
+        var_disp_name <- vv
+      } else {
+        var_disp_name <- var_disp_names[k]
+      }
+      
+      if (is.data.frame(list_data)) {
+        y_pred_k <- pre$y.pred
+        se_pred_k <- pre$se.pred
+      } else {
+        y_pred_k <- pre$y.pred[[paste0("y", k)]] 
+        se_pred_k <- pre$se.pred[[paste0("y", k)]]
+      }
+      
+      if (any(df_comb$severity == "HC")) {
+        lo <- quantile(df_comb[df_comb$severity == "HC", vv], probs = 0.25, na.rm = TRUE)
+        up <- quantile(df_comb[df_comb$severity == "HC", vv], probs = 0.75, na.rm = TRUE)
+        
+        mmax <- max(max(dat_subj_to_show[[k]]$y, na.rm = T), up, na.rm = T)
+        mmin <- min(min(dat_subj_to_show[[k]]$y, na.rm = T), lo, na.rm = T)
+      } else {
+        mmax <- max(dat_subj_to_show[[k]]$y, na.rm = T)
+        mmin <- min(dat_subj_to_show[[k]]$y, na.rm = T)
+      }
+      
+      Ylim = c(max(0.5, mmin) - ylim_offset, mmax + ylim_offset)
+      Xlim = c(0,max(data[[k]]$argvals)+1)
+      Ylab = ifelse(is.null(ylab), paste0(var_disp_name, " (log-scale)"), ylab)#bquote(y^(1))
+      Xlab = "Days from symptom onset"
+      
+      main <- var_disp_name
+      if (!is.null(main_plus)) {
+        main <- paste0(main, main_plus)
+      } else {
+        main <- paste0(main, ", subj. ", i, "\n (sev.: ", sev, 
+                       ", gender: ", unique(df_comb$gender[df_comb$subject_id %in% i]), 
+                       ", age: ", unique(df_comb$age[df_comb$subject_id %in% i]), 
+                       ")")
+      }
+      
+      if (is.null(sub)) {
+        sub_i <- paste0("Scores 1st EF: ", format(scores$EF1[scores$subject_id %in% i], digits =2),
+                        ", 2nd EF: ", format(scores$EF2[scores$subject_id %in% i], digits =2))
+      } else {
+        sub_i <- sub
+      }
+      
+      idx = (nrow(dat_i[[k]])+1):(nrow(dat_i[[k]])+length(tnew))
+      
+      if (bool_sub) {
+        plot(dat_i[[k]][,"argvals"],dat_i[[k]][,"y"],ylim=Ylim,xlim=Xlim,ylab=Ylab,xlab=Xlab,
+             main=main,cex.lab=cex_lab,cex.axis = 1.0,cex.main = cex_main,pch=1, 
+             sub = sub_i)
+      } else {
+        plot(dat_i[[k]][,"argvals"],dat_i[[k]][,"y"],ylim=Ylim,xlim=Xlim,
+             # ylab=paste0(" \n \n", Ylab, "\n", sub_i), 
+             ylab = Ylab, xlab=Xlab,
+             main=main,cex.lab=cex_lab,cex.axis = 1.0,cex.main = cex_main,pch=1)
+        legend("top", sub_i, bty = "n")
+      }
+      
+      
+      if (any(df_comb$severity == "HC")) {
+        rect(-5, lo, days_thres+5, up, col = adjustcolor("gray", alpha.f=0.5), border = "gray")
+      }
+      
+      status <- unique(df_comb$status[df_comb$subject_id %in% i])
+      time <- unique(df_comb$time[df_comb$subject_id %in% i])
+      time <- time[!is.na(time)]
+      
+      stopifnot(length(status) == 1 & length(time) == 1)
+      
+      
+      if (status == 2 & time < 50) { # cut prediction if patient died within the analysis window
+        lines(tnew[tnew<=time], y_pred_k[idx][tnew<=time],col=col_curve[i],lwd=2)
+        points(time,  y_pred_k[idx][time], pch = 4, cex = 1.25, lwd = 1.5)
+        lines(tnew[tnew<=time], y_pred_k[idx][tnew<=time]-1.96*se_pred_k[idx][tnew<=time],
+              col=col_ci,lwd=2,lty=2)
+        lines(tnew[tnew<=time], y_pred_k[idx][tnew<=time]+1.96*se_pred_k[idx][tnew<=time],
+              col=col_ci,lwd=2,lty=2)
+      } else {
+        lines(tnew, y_pred_k[idx],col=col_curve[i],lwd=2)
+        lines(tnew,y_pred_k[idx]-1.96*se_pred_k[idx],col=col_ci,lwd=2,lty=2)
+        lines(tnew,y_pred_k[idx]+1.96*se_pred_k[idx],col=col_ci,lwd=2,lty=2)
+
+      }
+      
+    }
+    
+  }
+  
+}
+
+
+plot_eigenfunctions <- function(eigenfunctions, eigenvalues, list_data, vec_var, days_thres) {
+  
+  if (is.data.frame(list_data)) {
+    data <- list("y1" = list_data) # in case of univariate fpca
+  } else {
+    data <- list_data # in case of multivariate fpca
+  }
+  
+  par(mfrow = c(1,length(vec_var)))
+  for (k in seq_along(data)) {
+    
+    vv <- vec_var[k]
+    lim_eigen <- c(min(c(eigenfunctions[((k-1)*days_thres + 1):(k*days_thres),1:2], 0)),
+                   max(c(eigenfunctions[((k-1)*days_thres + 1):(k*days_thres),1:2], 0)))
+    plot(eigenfunctions[((k-1)*days_thres + 1):(k*days_thres),1], 
+         xlab = "Days from swab or symptom onset",
+         ylab = "Eigenfunctions",
+         main = vv,
+         ylim = lim_eigen, type = "l", col = "black", lwd = 2)
+    abline(h = 0, col = "grey", lwd = 2, lty = 3)
+    lines(eigenfunctions[((k-1)*days_thres + 1):(k*days_thres),2], 
+          type = "l", lwd = 2, col = "black", lty = 2)
+    legend("bottomleft", 
+           col = c("black", "black"),
+           lwd = 2,
+           lty = c(1,2),
+           bty = "n",
+           legend = paste0(c("1st: ", "2nd: "), #, "3rd"), 
+                           format(eigenvalues[1:2] / sum(eigenvalues)*100, digits = 3), "%")) 
+  }
+  
+}
+
+
+plot_variance <- function(fit, list_data, tnew, vec_var, disp_param = TRUE, 
+                          var_disp_names = NULL) {
+  
+  if (is.data.frame(list_data)) {
+    data <- list("y1" = list_data) # in case of univariate fpca
+  } else {
+    data <- list_data # in case of multivariate fpca
+  }
+  
+  Cov <- as.matrix(fit$Chat.new)
+  Cov_diag <- diag(Cov)
+  
+  if (disp_param) {
+    par(mfrow=c(1, length(vec_var)),mar=c(4.5,4.1,3,4.5))
+  }
+  
+  Xlab = "Days from symptom onset"
+  
+  if (!is.null(var_disp_names)) {
+    vec_var <- var_disp_names
+  }
+  
+  for (k in seq_along(data)) {
+    vv <- vec_var[k]
+    plot(tnew,Cov_diag[seq_along(tnew)+length(tnew)*(k-1)],type="l",
+         xlab = Xlab, ylab="variance",main=vv,
+         cex.axis=1.25,cex.lab=1.25,cex.main=1.25,lwd=2)
+  }
+  
+}
+
+
+plot_correlation <- function(fit, list_data, tnew, vec_var, nb_spaces = 3, nb_ticks = 4,
+                             var_disp_names = NULL, sub_var = NULL) {
+  
+  if (is.data.frame(list_data)) {
+    data <- list("y1" = list_data) # in case of univariate fpca
+  } else {
+    data <- list_data # in case of multivariate fpca
+  }
+  
+  if (!is.null(var_disp_names)) {
+    vec_var <- var_disp_names
+  }
+  
+  if (!is.null(sub_var)) {
+    data <- data[sub_var]
+    ind_cor <- Reduce(c, sapply(sub_var, function(id) (id-1)*length(tnew) + (tnew+1)))
+    fit$Cor.new <- fit$Cor.new[ind_cor, ind_cor, drop = FALSE]
+    vec_var <- vec_var[sub_var]
+  }
+  
+  Cor <- as.matrix(fit$Cor.new)
+  
+  Xlab = "Days from symptom onset"
+  
+  require(fields)
+  par(mar=c(5,4.5,4,7))
+  par(mfrow = c(1,1))
+  mycols <- colorRampPalette(colors = c("blue","white", "red"))(200)
+  
+  nb_var <- length(data)
+  vec_trunc <- stringr::str_trunc(vec_var, 25)
+  vec_spaces <- ceiling(nb_spaces / length(vec_var) - nchar(vec_trunc))
+  
+  main <- paste0(sapply(1:length(vec_var), function(i) paste0(paste0(rep(" ", max(2, ceiling(vec_spaces[i]/2))), collapse = ""),
+                                                              vec_trunc[i], paste0(rep(" ", max(2, ceiling(vec_spaces[i]/2))), collapse = ""))),
+                 collapse = "")
+  
+  image(Cor,axes=F, col=mycols, xlab=Xlab, ylab = Xlab,
+        main = main, cex.main = 0.95)
+  
+  ax <- as.vector(sapply(seq_along(data), function(k) {
+    seq(0, 1/nb_var, l = nb_ticks) + (k-1)/nb_var
+  }))
+  axis(1,at=ax,labels=format(rep(seq(0, max(tnew), l = nb_ticks), times = nb_var), digits = 2))
+  axis(2,at=ax,labels=format(rep(seq(0, max(tnew), l = nb_ticks), times = nb_var), digits = 2))
+  
+  image.plot(1:(nb_var*length(tnew)), 
+             1:(nb_var*length(tnew)), 
+             as.matrix(Cor),
+             col=mycols,
+             cex.axis=1.25,cex.lab=1,cex.main=1,
+             axis.args = list(at = c(-1.0, -0.5, 0, 0.5,1.0)),
+             legend.shrink=0.75,legend.line=-1.5, legend.only = T)
+  
+  
+}
 
