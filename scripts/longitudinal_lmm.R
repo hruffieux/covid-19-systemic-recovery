@@ -55,9 +55,6 @@ for (data_id in seq_along(all_data)) {
              df_glyc,
              df_all_ratios)[[data_id]]
   
-  bool_covariates <- FALSE # age and gender
-  
-  
   resp_var <- names(list(df_nmr_lp, 
                          df_ms, 
                          df_ct, 
@@ -72,25 +69,28 @@ for (data_id in seq_along(all_data)) {
     }
   }  
   
+  bool_covariates <- FALSE 
   
   bool_log10_display <- FALSE
   
-  bool_disp_pval <- TRUE # to display the baseline and interaction p-values on the plots
-  bool_load_pval <- T # to load the adjusted p-values and display them on the plots (the code need first to be run with bool_save_pval)
-  bool_save_pval <- F # to compute the adjusted p-values and save them in order to then be able to run with bool_load_pval <- T
+  bool_disp_pval <- TRUE  # to display the baseline and interaction p-values on the plots
+  bool_load_pval <- FALSE # to load the adjusted p-values and display them on 
+  # the plots (the code need first to be run with bool_save_pval)
+  bool_save_pval <- FALSE # to compute the adjusted p-values and save them in 
+  # order to then be able to run with bool_load_pval <- T
   
   
   if (grepl("clust", group_type)) {
     
     days_thres <- 50
-    # load(paste0(out_dir, "all_scores_ms_v", version_ms, 
-    #             "_glyc_v", version_glyc,
-    #             "_clin_v", version_info, "_",
-    #             paste0(selected_severity_groups, collapse = "-"),
-    #             "_days_thres_", days_thres, "/output.RData"))
     load(file.path(out_dir, "all_scores.RData"))  # new, includes with mclust
     
-    df_comb <- left_join(df_comb, subset(df_scores, select = unique(c("sample_id_v2", "subject_id", "days_from_sx_or_swab_imputed", "severity", group_type))))
+    df_comb <- left_join(df_comb, subset(df_scores, 
+                                         select = unique(c("sample_id_v2", 
+                                                           "subject_id", 
+                                                           "days_from_sx_or_swab_imputed", 
+                                                           "severity", 
+                                                           group_type))))
     df_comb <- df_comb[!is.na(df_comb[, group_type]) | df_comb$severity == "HC", ]
     
     
@@ -119,9 +119,9 @@ for (data_id in seq_along(all_data)) {
 
 # Cases:
 #
-
 df_comb_cases <- df_comb[df_comb$severity != "HC" &
-                           df_comb$days_from_sx_or_swab_imputed < trunc_days,, drop = FALSE]
+                           df_comb$days_from_sx_or_swab_imputed < trunc_days,, 
+                         drop = FALSE]
 
 df_comb_cases <- choose_severity_groups(df_comb_cases, selected_severity_groups)
 
@@ -135,8 +135,8 @@ df_comb_controls <- df_comb[df_comb$severity == "HC",, drop = FALSE]
 nrow(df_comb_controls)
 
 if(bool_save){
-  save_path <- paste0(out_dir, "longitudinal", mess_version,
-                      "_clin_v", version_info, "_", 
+  save_path <- paste0(out_dir, "longitudinal", mess_version, "_clin_v", 
+                      version_info, "_", 
                       paste0(selected_severity_groups, collapse = "-"),
                       "_data_name_", data_name, "_group_", group_type,
                       "_", trunc_days, "_days", 
@@ -146,20 +146,13 @@ if(bool_save){
   save_path <- NULL
 }
 
-if (data_name %in% c("NMR_SM", "NMR_LP_abundances", # "NMR_LP_pn", "NMR_LP_ratios",
-                     "MS", "lipids", "cell_types", "ratios", "log_ratios", "cell_types_flow")) {
-  
-  nzf_thres <- 0.05 # exclude metabolites whose non-zero freq < 0.05
-  list_exclude <- exclude_low_nzf(df_comb_cases, resp_var, nzf_thres)
-  df_comb_cases <- list_exclude$df_comb
-  resp_var <- list_exclude$vec_var
-  
-}
 
 # For dot labels
 #
 df_comb_cases$status <- df_comb_cases$hospital_outcome
-df_comb_cases$status[df_comb_cases$hospital_outcome %in% c("hospital", "other_facility", "other_hospital")] <- "hospital or facility"
+df_comb_cases$status[df_comb_cases$hospital_outcome %in% c("hospital", 
+                                                           "other_facility", 
+                                                           "other_hospital")] <- "hospital or facility"
 df_comb_cases$status <- as.factor(df_comb_cases$status)
 label_var <- "status"
 
@@ -182,16 +175,7 @@ if (bool_load_pval) { # pvalues and FDR
   
 }
 
-
-# Metabolites with a significant
-# (FDR < 0.05) interaction term are considered as having a differential temporal
-# expression depending on the disease severity or other group type.
 df_comb_cases$group_type <- df_comb_cases[,group_type]
-
-# resp_var0 <- filter_metabo_singular_fit(resp_var, df_comb_controls, df_comb_cases, bool_quad = bool_quad)
-
-##### FILTER OUT VARIABLES WHICH LEAD TO AN OVERPARAMETRISATION OF THE MODEL #####
-# cannot put these lmm in a function unfortunately....
 
 excluded_var <- NULL
 
@@ -221,7 +205,6 @@ for (ii in seq_along(resp_var)) {
       
     }
     
-    
     NULL
     
   }, error = function(e) {
@@ -231,11 +214,6 @@ for (ii in seq_along(resp_var)) {
   
 }
 resp_var <- resp_var[!(resp_var %in% excluded_var)]
-
-##############################
-
-
-
 
 
 for (ii in seq_along(resp_var)) {
@@ -293,7 +271,7 @@ for (ii in seq_along(resp_var)) {
     
     # likelihood ratio test for baseline term
     #
-    pval_base <- anova(out_lmm, out_lmm_f0_base)$`p-value`[2] # exact same p-value obtained using splines (see 2: #) or initial time + I(time^2) coding!! the two approaches are equivalent.
+    pval_base <- anova(out_lmm, out_lmm_f0_base)$`p-value`[2] 
     fdr_base <- NULL
     
     if (bool_covariates) {
@@ -313,7 +291,7 @@ for (ii in seq_along(resp_var)) {
     
     # likelihood ratio test for interaction term
     #
-    pval_int <- anova(out_lmm, out_lmm_f0_int)$`p-value`[2] # exact same p-value obtained using splines (see 2: #) or initial time + I(time^2) coding!! the two approaches are equivalent.
+    pval_int <- anova(out_lmm, out_lmm_f0_int)$`p-value`[2] 
     fdr_int <- NULL
   }
   
@@ -329,8 +307,7 @@ for (ii in seq_along(resp_var)) {
     fdr_int_label <- add_signif_label(fdr_int)
   }
   
-  
-  pred <- predict(out_lmm, level = 0) # if bool_covariates, I think we should supply newdata = , with a dataframe with only males, and then only women (two curves), and an constant age, of say, 50
+  pred <- predict(out_lmm, level = 0) 
   
   if(bool_cb) { # add confidence bands
     des <- model.matrix(formula(out_lmm)[-2], df_comb_cases_dep)
@@ -356,7 +333,7 @@ for (ii in seq_along(resp_var)) {
     #
     lo <- quantile(dep_var_controls, probs = 0.25, na.rm = TRUE)
     up <- quantile(dep_var_controls, probs = 0.75, na.rm = TRUE)
-    if (lo == up) {# for the case the upper quantile = lower quantile, so we see the line
+    if (lo == up) { # for the case the upper quantile = lower quantile, so we see the line
       lo <- lo * 0.8
       up <- up * 1.2
     }
@@ -410,9 +387,8 @@ for (ii in seq_along(resp_var)) {
   #
   
   p <- p + theme_light()
-  p <- p + ggtitle(gsub("_", " ", ifelse(dep_var == "Ratio_A1_B100", "Ratio_AB_A1", dep_var)))
-  p <- p + ylab(paste0(ifelse(data_name %in% c("ratios", "clinical"), "", "log2(.+1) "),
-                       gsub("_", " ", ifelse(dep_var == "Ratio_A1_B100", "Ratio_AB_A1", dep_var))))
+  p <- p + ggtitle(gsub("_", " ", dep_var))
+  p <- p + ylab(paste0("log2(.+1) ", gsub("_", " ", dep_var)))
   p <- p + theme(plot.title = element_text(size = 15, face = "bold"))
   p <- p + xlab("Days post symptom onset")
   p <- p + scale_color_manual(values = vec_col_gr)
@@ -436,23 +412,37 @@ for (ii in seq_along(resp_var)) {
   if (bool_disp_pval) {
     if (is.null(fdr_base) & is.null(fdr_int)) {
       p <- p + labs(subtitle = paste0("LR test: baseline p = ",
-                                      ifelse(pval_base < 0.0001, format(pval_base, scientific = TRUE, digits = 2), format(pval_base, digits = 2)),
+                                      ifelse(pval_base < 0.0001, 
+                                             format(pval_base, scientific = TRUE, digits = 2), 
+                                             format(pval_base, digits = 2)),
                                       ifelse(pval_base_label != "",  paste0(" (", pval_base_label, ")"), ""),
                                       ", interaction p = ",
-                                      ifelse(pval_int < 0.0001, format(pval_int, scientific = TRUE, digits = 2), format(pval_int, digits = 2)),
+                                      ifelse(pval_int < 0.0001, 
+                                             format(pval_int, scientific = TRUE, digits = 2), 
+                                             format(pval_int, digits = 2)),
                                       ifelse(pval_int_label != "",  paste0(" (", pval_int_label, ")"), "")
       ))
     } else if (!is.null(fdr_base) & !is.null(fdr_int)) {
       p <- p + labs(subtitle = paste0("baseline p = ",
-                                      ifelse(pval_base < 0.0001, format(pval_base, scientific = TRUE, digits = 2), format(pval_base, digits = 2)),
+                                      ifelse(pval_base < 0.0001, 
+                                             format(pval_base, scientific = TRUE, digits = 2), 
+                                             format(pval_base, digits = 2)),
                                       ", adj p = ",
-                                      ifelse(fdr_base < 0.0001, format(fdr_base, scientific = TRUE, digits = 2), format(fdr_base, digits = 2)),
-                                      ifelse(fdr_base_label != "",  paste0(" (", fdr_base_label, ")"), ""),
+                                      ifelse(fdr_base < 0.0001, 
+                                             format(fdr_base, scientific = TRUE, digits = 2), 
+                                             format(fdr_base, digits = 2)),
+                                      ifelse(fdr_base_label != "",  
+                                             paste0(" (", fdr_base_label, ")"), ""),
                                       ", interaction p = ",
-                                      ifelse(pval_int < 0.0001, format(pval_int, scientific = TRUE, digits = 2), format(pval_int, digits = 2)),
+                                      ifelse(pval_int < 0.0001, 
+                                             format(pval_int, scientific = TRUE, digits = 2), 
+                                             format(pval_int, digits = 2)),
                                       ", adj p = ",
-                                      ifelse(fdr_int < 0.0001, format(fdr_int, scientific = TRUE, digits = 2), format(fdr_int, digits = 2)),
-                                      ifelse(fdr_int_label != "",  paste0(" (", fdr_int_label, ")"), "")
+                                      ifelse(fdr_int < 0.0001, 
+                                             format(fdr_int, scientific = TRUE, digits = 2), 
+                                             format(fdr_int, digits = 2)),
+                                      ifelse(fdr_int_label != "",  
+                                             paste0(" (", fdr_int_label, ")"), "")
       ))
     } else {
       stop("fdr_base and fdr_int must be both NULL or both non-NULL.")
@@ -492,8 +482,10 @@ if (bool_save_pval) {
   save(vec_fdr_base, vec_pval_base, vec_fdr_int, vec_pval_int,
        file = paste0(save_path, "/pvalues.RData"))
   df_pval <- data.frame(
-    "p-values baseline" = vec_pval_base, "adjusted p-values baseline" = vec_fdr_base,
-    "p-values interaction" = vec_pval_int, "adjusted p-values interaction" = vec_fdr_int, check.names = FALSE)
+    "p-values baseline" = vec_pval_base, 
+    "adjusted p-values baseline" = vec_fdr_base,
+    "p-values interaction" = vec_pval_int, 
+    "adjusted p-values interaction" = vec_fdr_int, check.names = FALSE)
   df_pval <- df_pval[order(df_pval$`adjusted p-values interaction`),]
   df_pval <- df_pval[order(df_pval$`adjusted p-values baseline`),]
   rownames(df_pval) <- paste0("'", rownames(df_pval), "'")
@@ -508,9 +500,12 @@ if (bool_save_pval) {
   
   fdr_thres <- 0.05
   vec_signif_col <- rep("black", nrow(df_pval))
-  vec_signif_col[df_pval$`adjusted p-values baseline` <= fdr_thres & df_pval$`adjusted p-values interaction` <= fdr_thres] <- "springgreen4"
-  vec_signif_col[df_pval$`adjusted p-values baseline` <= fdr_thres & df_pval$`adjusted p-values interaction` > fdr_thres] <- adjustcolor( "springgreen4", alpha.f = 0.7)
-  vec_signif_col[df_pval$`adjusted p-values baseline` > fdr_thres & df_pval$`adjusted p-values interaction` <= fdr_thres] <- adjustcolor( "springgreen4", alpha.f = 0.7)
+  vec_signif_col[df_pval$`adjusted p-values baseline` <= fdr_thres & 
+                   df_pval$`adjusted p-values interaction` <= fdr_thres] <- "springgreen4"
+  vec_signif_col[df_pval$`adjusted p-values baseline` <= fdr_thres & 
+                   df_pval$`adjusted p-values interaction` > fdr_thres] <- adjustcolor( "springgreen4", alpha.f = 0.7)
+  vec_signif_col[df_pval$`adjusted p-values baseline` > fdr_thres & 
+                   df_pval$`adjusted p-values interaction` <= fdr_thres] <- adjustcolor( "springgreen4", alpha.f = 0.7)
   
   names(vec_signif_col) <- rownames(df_pval)
   par(pty="s")
@@ -534,6 +529,4 @@ if (bool_save_pval) {
     dev.off()
   }
   
-}
-
 }

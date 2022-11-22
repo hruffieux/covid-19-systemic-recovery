@@ -156,7 +156,7 @@ eigenvalues <- fit$eigenvalues
 
 if ("EF2" %in% names(scores)) {
   
-  print("/!\\ if flip not all 1, sign from object fit won't correspond to sign of eigenfunctions and scores.")
+  print("/!\\ if flip not all 1, the sign from object fit won't correspond to the sign of eigenfunctions and scores.")
   
   eigenfunctions[,1:2] <- sweep(fit$eigenfunctions[,1:2], 2, vec_flip, "*")
   scores[,1:2] <- sweep(scores[,1:2], 2, vec_flip, "*")

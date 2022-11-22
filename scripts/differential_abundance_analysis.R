@@ -207,7 +207,7 @@ for(data_id in seq_along(all_data_types)) {
                             sei = df_res_sub$se,
                             slab = df_res_sub$var_name, 
                             main = paste0("Associations with ", 
-                                          test_covariate, #ifelse(test_covariate == "log_CRP", "CRP levels", "severity"), 
+                                          test_covariate, 
                                           "\n ", gsub(" abundances", "", gsub("_", " ", data_name)), ", ",
                                           cat),
                             cex.main = 2,
