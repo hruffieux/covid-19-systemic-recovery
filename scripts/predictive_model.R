@@ -48,16 +48,7 @@ if ("covariates" %in% data_names) {
   df_clin <- df_info
   df_clin$gender <- as.numeric(df_clin$gender) - 1 # 1 = M, 0 = F
   
-  mat_indic <- unmap(df_clin$ethnicity) # binary or categorical input data are 
-                                        # going to pose a problem as they will 
-                                        # be considered as continuous in sPLS-DA. 
-                                        # You could transform each categorical 
-                                        # variable as a dummy matrix (by using 
-                                        # the unmap() function in mixOmics) but 
-                                        # if you use a sparse PLS-DA the 
-                                        # interpretation is going to be tricky 
-                                        # (as it may select one category of a 
-                                        # given variable, but not the other).
+  mat_indic <- unmap(df_clin$ethnicity) 
   df_clin$asian <- mat_indic[,1]
   df_clin$other <- mat_indic[,2]
   df_clin$white <- mat_indic[,3]
@@ -73,7 +64,7 @@ if ("covariates" %in% data_names) {
 
 list_df <- list(df_ms,
                 df_ct,
-                df_glprot
+                df_glprot,
                 df_all_ratios,
                 df_clin)
 
@@ -81,7 +72,7 @@ list_df <- list(df_ms,
 bool_save <- FALSE
 if (bool_save) {
   res_dir <- paste0(out_dir, "pred_gCCA_days_thres_", days_thres, "_", dep_var, 
-                    "_", paste0(data_names_cov, collapse = "-"), "_",
+                    "_", paste0(data_names, collapse = "-"), "_",
                     paste0(covariates, collapse = "-"),
                     ifelse(bool_training_test, "_training_test", "_training"),
                     ifelse(bool_borrow_info, 
@@ -105,7 +96,7 @@ names(list_X) <- data_names
 
 # Restrict to samples available for each data type
 #
-inter_samples <- Reduce(intersect, lapply(list_X, rownames)) # TO CHECK: impute instead of exclude? 
+inter_samples <- Reduce(intersect, lapply(list_X, rownames)) 
 list_X <- lapply(list_X, function(x) { x[inter_samples,] })
 stopifnot(length(unique(lapply(list_X, rownames)))==1) # check that all datasets have the same rownames
 
@@ -125,7 +116,6 @@ sub_df_info <- choose_severity_groups(sub_df_info, selected_severity_groups)
 
 # Prepare response (factor if discrete)
 #
-
 trunc_days <- 50
 load(file.path(out_dir, "all_scores.RData")) 
 sub_df_info <- left_join(sub_df_info, df_scores) 
@@ -288,8 +278,6 @@ if (discrete_resp & tune_keep) {# it seems that tune.block.spls doesn't exist fo
   
   
 }
-
-
 
 if (discrete_resp) {
   
