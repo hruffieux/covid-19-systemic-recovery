@@ -1,3 +1,5 @@
+[![DOI](https://zenodo.org/badge/555840650.svg)](https://zenodo.org/badge/latestdoi/555840650)
+
 ### A patient-centric modeling framework captures recovery from SARS-CoV-2 infection: source code
 
 This repository contains source code accompanying the publication:
